@@ -325,6 +325,46 @@ const products = [
       { name: "Extra Acheke", price: 30 },
       { name: "Extra Sauce", price: 10 },
     ]
+  },
+  {
+    name: "Kebba",
+    category: "african",
+    price: 25,
+    image: "/images/kebba.jpg",
+    description: "Traditional African Kebba",
+    long_description: "Delicious traditional African kebba, crispy on the outside and flavorful on the inside.",
+    featured: true,
+    addOns: [
+      { name: "Extra Sauce", price: 5 },
+      { name: "Extra Pieces", price: 30 },
+    ]
+  },
+  {
+    name: "Actater and Chicken",
+    category: "african",
+    price: 200,
+    image: "/images/actater-chicken.jpg",
+    description: "Actater served with delicious chicken",
+    long_description: "Traditional Actater dish served with nicely seasoned chicken and special sauce.",
+    addOns: [{ name: "Extra Chicken", price: 30 }]
+  },
+  {
+    name: "Actater and Fish",
+    category: "african",
+    price: 300,
+    image: "/images/actater-fish.jpg",
+    description: "Actater served with grilled fish",
+    long_description: "Traditional Actater dish served with tasty grilled fish and special sauce.",
+    addOns: [{ name: "Extra Fish", price: 40 }]
+  },
+  {
+    name: "Actater and Goat",
+    category: "african",
+    price: 400,
+    image: "/images/actater-goat.jpg",
+    description: "Actater served with tender goat meat",
+    long_description: "Traditional Actater dish served with tender, flavorful goat meat and special sauce.",
+    addOns: [{ name: "Extra Goat Meat", price: 50 }]
   }
 ];
 
