@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from 'react-hot-toast';
 
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: "Pee's Bakery & Restaurant",
   description: "Fresh baked goods and delicious meals in Freetown, Sierra Leone",
