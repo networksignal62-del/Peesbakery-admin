@@ -52,7 +52,7 @@ export default function AdminDashboard() {
   function setupRealtime() {
     const channel = supabase
       .channel('admin-dashboard')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload: any) => {
         const order = payload.new as Order
         toast(`🛒 New Order! #${order.id.substring(0,8).toUpperCase()} — ${order.customer_name}`, {
           duration: 8000,
@@ -82,7 +82,7 @@ export default function AdminDashboard() {
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>Dashboard</h1>
-          <p className={styles.subtitle}>Welcome back! Here's what's happening today.</p>
+          <p className={styles.subtitle}>Welcome back! Here&apos;s what&apos;s happening today.</p>
         </div>
         <Link href="/admin/orders" className={styles.viewAllBtn}>
           View All Orders
