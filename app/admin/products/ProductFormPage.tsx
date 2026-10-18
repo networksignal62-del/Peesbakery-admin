@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Category, Product } from '@/lib/types'
+import { Category } from '@/lib/types'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Minus, Loader2, Upload, Trash2, Image as ImageIcon } from 'lucide-react'
+import { ArrowLeft, Plus, Minus, Loader2, Upload, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import styles from './ProductForm.module.css'
 
@@ -69,10 +69,10 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
         is_customizable: data.is_customizable,
       })
       setImages(data.image ? data.image.split(',') : [])
-      setVariants((data.product_variants || []).map((v: any) => ({
+      setVariants((data.product_variants || []).map((v: { name: string; price: number; description: string | null }) => ({
         name: v.name, price: v.price.toString(), description: v.description || ''
       })))
-      setAddons((data.product_addons || []).map((a: any) => ({
+      setAddons((data.product_addons || []).map((a: { name: string; price: number }) => ({
         name: a.name, price: a.price.toString()
       })))
     }
@@ -100,8 +100,8 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
 
       setImages(prev => [...prev, ...data.urls])
       toast.success(`${data.urls.length} image(s) uploaded!`)
-    } catch (err: any) {
-      toast.error('Upload failed: ' + err.message)
+    } catch (err: unknown) {
+      toast.error('Upload failed: ' + (err instanceof Error ? err.message : 'Please try again.'))
     } finally {
       setUploadingImage(false)
       // Reset input
@@ -109,29 +109,25 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
     }
   }
 
-  function handleRandomImage() {
-    const query = form.name ? form.name.split(' ')[0].toLowerCase() : 'baking'
-    const newImage = `https://loremflickr.com/600/400/${query},food/all?random=${Math.random()}`
-    setImages(prev => [...prev, newImage])
-    toast.success('Random placeholder image added!')
-  }
-
   function removeImage(index: number) {
     setImages(prev => prev.filter((_, i) => i !== index))
   }
 
   async function handleSave() {
-    if (!form.name || !form.price) {
-      toast.error('Name and price are required')
+    const price = Number(form.price)
+    if (!form.name.trim() || !form.category || !Number.isFinite(price) || price < 0 || price > 1000000 ||
+        variants.some(item => !item.name.trim() || !Number.isFinite(Number(item.price)) || Number(item.price) < 0 || Number(item.price) > 1000000) ||
+        addons.some(item => !item.name.trim() || !Number.isFinite(Number(item.price)) || Number(item.price) < 0 || Number(item.price) > 1000000)) {
+      toast.error('Enter a name, category, and valid non-negative prices.')
       return
     }
     setSaving(true)
 
     try {
       const productData = {
-        name: form.name,
-        category: form.category || null,
-        price: parseFloat(form.price),
+        name: form.name.trim(),
+        category: form.category,
+        price,
         description: form.description || null,
         long_description: form.long_description || null,
         featured: form.featured,
@@ -140,40 +136,19 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
         image: images.length > 0 ? images.join(',') : null,
       }
 
-      let id = productId
-      if (isNew) {
-        const { data, error } = await supabase.from('products').insert(productData).select().single()
-        if (error) throw error
-        id = data.id
-      } else {
-        const { error } = await supabase.from('products').update(productData).eq('id', id!)
-        if (error) throw error
-      }
-
-      // Update variants
-      await supabase.from('product_variants').delete().eq('product_id', id!)
-      if (variants.length > 0) {
-        await supabase.from('product_variants').insert(
-          variants.map((v, i) => ({
-            product_id: id, name: v.name, price: parseFloat(v.price), description: v.description || null, sort_order: i
-          }))
-        )
-      }
-
-      // Update addons
-      await supabase.from('product_addons').delete().eq('product_id', id!)
-      if (addons.length > 0) {
-        await supabase.from('product_addons').insert(
-          addons.map((a, i) => ({
-            product_id: id, name: a.name, price: parseFloat(a.price), sort_order: i
-          }))
-        )
-      }
+      if (!isNew && (!productId || !Number.isSafeInteger(Number(productId)))) throw new Error('Product ID is invalid.')
+      const { data: savedId, error: saveError } = await supabase.rpc('save_catalog_product', {
+        p_product_id: isNew ? null : Number(productId),
+        p_product: productData,
+        p_variants: variants.map(variant => ({ name: variant.name.trim(), price: Number(variant.price), description: variant.description || null })),
+        p_addons: addons.map(addon => ({ name: addon.name.trim(), price: Number(addon.price) })),
+      })
+      if (saveError || !savedId) throw saveError || new Error('Product could not be saved.')
 
       toast.success(`Product ${isNew ? 'created' : 'updated'} successfully!`)
       router.push('/admin/products')
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save product')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save product')
     } finally {
       setSaving(false)
     }
@@ -207,8 +182,9 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
             <h3 className={styles.cardTitle}>Basic Information</h3>
             <div className={styles.fields}>
               <div className={styles.field}>
-                <label>Product Name *</label>
+                <label htmlFor="product-name">Product Name *</label>
                 <input
+                  id="product-name"
                   type="text"
                   placeholder="e.g. Fresh Bread Loaf"
                   value={form.name}
@@ -217,32 +193,35 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
               </div>
               <div className={styles.grid2}>
                 <div className={styles.field}>
-                  <label>Category</label>
+                  <label htmlFor="product-category">Category *</label>
                   <select
+                    id="product-category"
                     value={form.category}
                     onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                   >
-                    <option value="">No Category</option>
-                    {categories.map(c => (
-                      <option key={c.name} value={c.name}>{c.name}</option>
+                    <option value="">Choose a category</option>
+                    {categories.filter(c => c.id !== 'all').map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                 </div>
                 <div className={styles.field}>
-                  <label>Base Price (Le) *</label>
+                  <label htmlFor="product-price">Base Price (Le) *</label>
                   <input
+                    id="product-price"
                     type="number"
                     placeholder="0"
                     value={form.price}
                     onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
                     min="0"
-                    step="100"
+                    step="0.01"
                   />
                 </div>
               </div>
               <div className={styles.field}>
-                <label>Short Description</label>
+                <label htmlFor="product-description">Short Description</label>
                 <textarea
+                  id="product-description"
                   placeholder="Brief description for the menu card..."
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
@@ -250,8 +229,9 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
                 />
               </div>
               <div className={styles.field}>
-                <label>Long Description (Optional)</label>
+                <label htmlFor="product-long-description">Long Description (Optional)</label>
                 <textarea
+                  id="product-long-description"
                   placeholder="Detailed description shown in product details..."
                   value={form.long_description}
                   onChange={e => setForm(f => ({ ...f, long_description: e.target.value }))}
@@ -282,9 +262,6 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
                 />
               </label>
 
-              <button className={styles.randomBtn} onClick={handleRandomImage} type="button">
-                <ImageIcon size={16} /> Add Random Picture
-              </button>
             </div>
 
             {images.length > 0 && (
@@ -345,7 +322,7 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
               </button>
             </div>
             {variants.length === 0 ? (
-              <p className={styles.emptyHint}>No variants added. Click "Add Variant" to add sizes or types.</p>
+              <p className={styles.emptyHint}>No variants added. Click &quot;Add Variant&quot; to add sizes or types.</p>
             ) : (
               <div className={styles.itemList}>
                 {variants.map((v, i) => (
@@ -394,7 +371,7 @@ export default function ProductFormPage({ params: paramsPromise, isNew = false }
               </button>
             </div>
             {addons.length === 0 ? (
-              <p className={styles.emptyHint}>No add-ons. Click "Add Extra" to add optional extras.</p>
+              <p className={styles.emptyHint}>No add-ons. Click &quot;Add Extra&quot; to add optional extras.</p>
             ) : (
               <div className={styles.itemList}>
                 {addons.map((a, i) => (

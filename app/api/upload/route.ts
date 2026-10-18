@@ -1,54 +1,72 @@
+import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getAdminContext, isSameOriginPost } from '@/lib/server/admin-auth'
 
-export async function POST(req: NextRequest) {
+export const runtime = 'nodejs'
+
+const MAX_FILES = 5
+const MAX_FILE_BYTES = 5 * 1024 * 1024
+const TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
+
+function matchesImageSignature(bytes: Uint8Array, type: string) {
+  if (type === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+  if (type === 'image/png') return [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value)
+  if (type === 'image/webp') {
+    const header = Buffer.from(bytes)
+    return header.toString('ascii', 0, 4) === 'RIFF' && header.toString('ascii', 8, 12) === 'WEBP'
+  }
+  return false
+}
+
+export async function POST(request: NextRequest) {
+  if (!isSameOriginPost(request)) {
+    return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
+  }
+
+  const admin = await getAdminContext(['super_admin', 'admin', 'manager'])
+  if (!admin) {
+    return NextResponse.json({ error: 'You are not authorized to upload product images.' }, { status: 403 })
+  }
+
+  const formData = await request.formData().catch(() => null)
+  const files = formData?.getAll('images') ?? []
+  if (files.length < 1 || files.length > MAX_FILES || files.some(file => !(file instanceof File))) {
+    return NextResponse.json({ error: `Choose 1 to ${MAX_FILES} images.` }, { status: 400 })
+  }
+
+  const uploadedPaths: string[] = []
+  const urls: string[] = []
   try {
-    const formData = await req.formData()
-    const files = formData.getAll('images') as File[]
-    
-    if (!files || files.length === 0) {
-      return NextResponse.json({ error: 'No files provided' }, { status: 400 })
-    }
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        }
+    const validated: { bytes: Uint8Array; type: string; extension: string }[] = []
+    for (const file of files as File[]) {
+      const extension = TYPES[file.type]
+      if (!extension || file.size < 1 || file.size > MAX_FILE_BYTES) {
+        return NextResponse.json({ error: 'Use JPG, PNG, or WebP images under 5 MB each.' }, { status: 400 })
       }
-    )
 
-    const uploadPromises = files.map(async (file) => {
-      const bytes = await file.arrayBuffer()
-      const buffer = Buffer.from(bytes)
-      
-      const fileExt = file.name.split('.').pop()
-      const fileName = `products/${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
-
-      const { data, error } = await supabase.storage
-        .from('images')
-        .upload(fileName, buffer, {
-          contentType: file.type,
-          upsert: false
-        })
-
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      if (!matchesImageSignature(bytes, file.type)) {
+        return NextResponse.json({ error: 'One of the files is not a valid image.' }, { status: 400 })
+      }
+      validated.push({ bytes, type: file.type, extension })
+    }
+    for (const { bytes, type, extension } of validated) {
+      const path = `products/${randomUUID()}.${extension}`
+      const { error } = await admin.service.storage.from('images').upload(path, bytes, {
+        contentType: type,
+        upsert: false,
+      })
       if (error) throw error
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('images')
-        .getPublicUrl(fileName)
-
-      return publicUrl
-    })
-
-    const urls = await Promise.all(uploadPromises)
-
-    return NextResponse.json({ urls })
-  } catch (err: any) {
-    console.error('Upload error:', err)
-    return NextResponse.json({ error: err.message || 'Upload failed' }, { status: 500 })
+      uploadedPaths.push(path)
+      urls.push(admin.service.storage.from('images').getPublicUrl(path).data.publicUrl)
+    }
+    return NextResponse.json({ urls }, { headers: { 'Cache-Control': 'no-store' } })
+  } catch {
+    if (uploadedPaths.length) await admin.service.storage.from('images').remove(uploadedPaths)
+    return NextResponse.json({ error: 'Image upload failed. Please try again.' }, { status: 500 })
   }
 }

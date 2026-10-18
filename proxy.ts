@@ -1,13 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { canAccessAdminPath, defaultAdminPath, isStaffRole } from '@/lib/admin-access'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!url || !anonKey) {
-    return supabaseResponse
+    return NextResponse.json({ error: 'Staff sign-in is temporarily unavailable.' }, { status: 503 })
   }
 
   const supabase = createServerClient(
@@ -31,38 +32,46 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const isAdminRoute = request.nextUrl.pathname.startsWith('/admin')
+  const isAdminRoute = request.nextUrl.pathname === '/admin' || request.nextUrl.pathname.startsWith('/admin/')
   const isAdminLogin = request.nextUrl.pathname === '/admin/login'
+  const isInviteWelcome = request.nextUrl.pathname === '/admin/welcome'
 
-  if (isAdminRoute && !isAdminLogin) {
+  function redirect(path: string) {
+    const response = NextResponse.redirect(new URL(path, request.url))
+    supabaseResponse.cookies.getAll().forEach(cookie => response.cookies.set(cookie))
+    return response
+  }
+
+  if (isAdminRoute && !isAdminLogin && !isInviteWelcome) {
     if (!user) {
-      return NextResponse.redirect(new URL('/admin/login', request.url))
+      return redirect('/admin/login')
     }
 
-    // Check if user is an admin
     const { data: adminProfile } = await supabase
       .from('admin_profiles')
-      .select('*')
+      .select('role, is_active')
       .eq('id', user.id)
       .eq('is_active', true)
-      .single()
+      .maybeSingle()
 
-    if (!adminProfile) {
-      await supabase.auth.signOut()
-      return NextResponse.redirect(new URL('/admin/login', request.url))
+    if (!adminProfile || !isStaffRole(adminProfile.role)) {
+      return redirect('/admin/login')
+    }
+    if (!canAccessAdminPath(adminProfile.role, request.nextUrl.pathname)) {
+      return redirect(defaultAdminPath(adminProfile.role))
     }
   }
 
   if (isAdminLogin && user) {
     const { data: adminProfile } = await supabase
       .from('admin_profiles')
-      .select('*')
+      .select('role, is_active')
       .eq('id', user.id)
       .eq('is_active', true)
-      .single()
+      .maybeSingle()
 
-    if (adminProfile) {
-      return NextResponse.redirect(new URL('/admin', request.url))
+    if (adminProfile && isStaffRole(adminProfile.role)) {
+      return redirect(defaultAdminPath(adminProfile.role))
     }
   }
 
@@ -70,7 +79,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/admin/:path*'],
 }

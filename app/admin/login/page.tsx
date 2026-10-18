@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ChefHat, Eye, EyeOff, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import styles from './page.module.css'
+import { defaultAdminPath, isStaffRole } from '@/lib/admin-access'
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState('')
@@ -29,7 +30,7 @@ export default function AdminLoginPage() {
         .eq('is_active', true)
         .single()
 
-      if (!adminProfile) {
+      if (!adminProfile || !isStaffRole(adminProfile.role)) {
         await supabase.auth.signOut()
         toast.error('Access denied. Admin account required.')
         setLoading(false)
@@ -37,9 +38,10 @@ export default function AdminLoginPage() {
       }
 
       toast.success(`Welcome back, ${adminProfile.full_name || 'Admin'}!`)
-      router.push('/admin')
-    } catch (err: any) {
-      toast.error(err.message || 'Invalid email or password')
+      router.push(defaultAdminPath(adminProfile.role))
+      router.refresh()
+    } catch {
+      toast.error('Sign in failed. Check your details and try again.')
     } finally {
       setLoading(false)
     }
@@ -52,7 +54,7 @@ export default function AdminLoginPage() {
           <div className={styles.logoIcon}>
             <ChefHat size={32} color="white" />
           </div>
-          <h1 className={styles.logoText}>Pee's Bakery</h1>
+          <h1 className={styles.logoText}>Pee&apos;s Bakery</h1>
           <p className={styles.logoSub}>Admin Panel</p>
         </div>
 
@@ -104,7 +106,7 @@ export default function AdminLoginPage() {
           </form>
         </div>
 
-        <p className={styles.footer}>Pee's Bakery & Restaurant — Freetown, Sierra Leone</p>
+        <p className={styles.footer}>Pee&apos;s Bakery & Restaurant — Freetown, Sierra Leone</p>
       </div>
     </div>
   )

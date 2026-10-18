@@ -5,8 +5,10 @@ import { Toaster } from 'react-hot-toast';
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: "Pee's Bakery & Restaurant",
-  description: "Fresh baked goods and delicious meals in Freetown, Sierra Leone",
+  title: { default: "Admin | Pee's Bakery", template: "%s | Pee's Bakery Admin" },
+  description: "Staff administration for Pee's Bakery & Restaurant.",
+  robots: { index: false, follow: false, noarchive: true },
+  icons: { icon: '/icon.svg' },
 };
 
 export default function RootLayout({

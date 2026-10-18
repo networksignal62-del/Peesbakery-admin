@@ -1,4 +1,15 @@
 .layout {
+  --primary: #166534;
+  --primary-dark: #14532d;
+  --secondary: #f97316;
+  --bg: #f5f0e8;
+  --bg-alt: #ede8dc;
+  --text-primary: #1a1a1a;
+  --text-secondary: #6b7280;
+  --border: #e5e7eb;
+  --success: #22c55e;
+  --error: #ef4444;
+  --info: #3b82f6;
   display: flex;
   min-height: 100vh;
   background: #f0ebe0;

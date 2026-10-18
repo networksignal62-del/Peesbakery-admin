@@ -28,10 +28,16 @@ export default function AdminCategoriesPage() {
 
   async function addCategory() {
     if (!newCategoryName.trim()) return
+    const id = newCategoryName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    if (!id || categories.some(category => category.id === id)) {
+      toast.error('Choose a unique category name using letters or numbers.')
+      return
+    }
     setAdding(true)
     const { data, error } = await supabase
       .from('categories')
       .insert({
+        id,
         name: newCategoryName.trim(),
         display_order: categories.length + 1,
         is_active: true,
@@ -72,7 +78,10 @@ export default function AdminCategoriesPage() {
   }
 
   async function deleteCategory(cat: Category) {
-    if (!confirm(`Delete "${cat.name}"? Products in this category will be uncategorized.`)) return
+    const { count, error: countError } = await supabase.from('products').select('id', { count: 'exact', head: true }).eq('category', cat.id)
+    if (countError) return toast.error('Could not check whether this category is in use.')
+    if (count && count > 0) return toast.error('Move products to another category before deleting this one.')
+    if (!confirm(`Delete "${cat.name}"?`)) return
     const { error } = await supabase.from('categories').delete().eq('id', cat.id)
     if (!error) {
       setCategories(prev => prev.filter(c => c.id !== cat.id))

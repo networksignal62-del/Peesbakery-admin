@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Order, OrderStatus } from '@/lib/types'
-import { Search, Filter, RefreshCw, Eye } from 'lucide-react'
+import { Search, RefreshCw, Eye } from 'lucide-react'
 import Link from 'next/link'
 import styles from './page.module.css'
 import toast from 'react-hot-toast'
@@ -24,6 +24,7 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [search, setSearch] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set())
   const supabase = createClient()
 
@@ -37,29 +38,27 @@ export default function AdminOrdersPage() {
   }, [])
 
   async function fetchOrders() {
-    let query = supabase
+    const query = supabase
       .from('orders')
       .select('*, order_items(*)')
       .order('created_at', { ascending: false })
 
-    const { data } = await query
-    setOrders(data || [])
+    const { data, error } = await query
+    if (error) setErrorMessage('Orders could not be loaded. Check your connection and try again.')
+    else { setOrders(data || []); setErrorMessage('') }
     setLoading(false)
   }
 
   async function updateStatus(orderId: string, status: OrderStatus, note?: string) {
     setUpdatingIds(prev => new Set(prev).add(orderId))
-    const { error } = await supabase
-      .from('orders')
-      .update({ status })
-      .eq('id', orderId)
+    const { error } = await supabase.rpc('set_order_status', {
+      p_order_id: orderId,
+      p_status: status,
+      p_note: note || null,
+    })
 
     if (!error) {
-      await supabase.from('order_status_history').insert({
-        order_id: orderId,
-        status,
-        note: note || `Status updated to ${status}`,
-      })
+      await fetchOrders()
       toast.success(`Order status updated to "${status.replace('_', ' ')}"`)
     } else {
       toast.error('Failed to update status')
@@ -88,6 +87,8 @@ export default function AdminOrdersPage() {
           Refresh
         </button>
       </div>
+
+      {errorMessage && <div role="alert" className={styles.emptyState}><p>{errorMessage}</p><button type="button" onClick={() => { setLoading(true); void fetchOrders() }}>Try again</button></div>}
 
       {/* Filters */}
       <div className={styles.filters}>
@@ -129,7 +130,7 @@ export default function AdminOrdersPage() {
             <div className={styles.spinner} />
             Loading orders...
           </div>
-        ) : filtered.length === 0 ? (
+        ) : errorMessage ? null : filtered.length === 0 ? (
           <div className={styles.emptyState}>
             <p>No orders found</p>
           </div>
@@ -172,7 +173,7 @@ export default function AdminOrdersPage() {
 
                 <div className={styles.orderRight}>
                   <span className={styles.total}>Le {order.total?.toLocaleString()}</span>
-                  <span className={styles.items}>{(order.order_items as any)?.length || 0} items</span>
+                  <span className={styles.items}>{order.order_items?.length || 0} items</span>
                 </div>
               </div>
 

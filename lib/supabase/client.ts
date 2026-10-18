@@ -8,7 +8,7 @@ export function createClient() {
     if (typeof window === 'undefined') {
       console.warn('Supabase environment variables are missing during build/SSR.')
     }
-    return null as any
+    return null as unknown as ReturnType<typeof createBrowserClient>
   }
 
   return createBrowserClient(url, anonKey)

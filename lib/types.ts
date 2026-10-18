@@ -39,7 +39,7 @@ export interface OrderItem {
   quantity: number
   unit_price: number
   total_price: number
-  addons: any
+  addons: { name: string; price: number }[] | null
   special_instructions: string
   created_at: string
 }

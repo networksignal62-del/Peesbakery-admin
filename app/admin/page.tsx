@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Order } from '@/lib/types'
-import { ShoppingBag, DollarSign, Clock, Package, TrendingUp, Bell } from 'lucide-react'
+import { ShoppingBag, DollarSign, Clock, Package, Bell, BookOpen, LockKeyhole } from 'lucide-react'
 import Link from 'next/link'
 import styles from './page.module.css'
 import toast from 'react-hot-toast'
@@ -19,11 +19,12 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats>({ todayOrders: 0, todayRevenue: 0, pendingOrders: 0, totalProducts: 0 })
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const supabase = createClient()
 
   useEffect(() => {
-    fetchData()
-    setupRealtime()
+    void fetchData()
+    return setupRealtime()
   }, [])
 
   async function fetchData() {
@@ -37,8 +38,13 @@ export default function AdminDashboard() {
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('is_active', true),
       supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(10),
     ])
+    if (todayOrdersRes.error || pendingRes.error || productsRes.error || recentRes.error) {
+      setError('Dashboard data could not be loaded. Check your connection and try again.')
+      setLoading(false)
+      return
+    }
 
-    const todayRevenue = (todayOrdersRes.data || []).reduce((sum: number, o: any) => sum + (o.total || 0), 0)
+    const todayRevenue = (todayOrdersRes.data || []).reduce((sum: number, row: { total: number | string | null }) => sum + Number(row.total || 0), 0)
     setStats({
       todayOrders: todayOrdersRes.data?.length || 0,
       todayRevenue,
@@ -46,25 +52,26 @@ export default function AdminDashboard() {
       totalProducts: productsRes.count || 0,
     })
     setRecentOrders(recentRes.data || [])
+    setError('')
     setLoading(false)
   }
 
   function setupRealtime() {
     const channel = supabase
       .channel('admin-dashboard')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload: any) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload: { new: unknown }) => {
         const order = payload.new as Order
         toast(`🛒 New Order! #${order.id.substring(0,8).toUpperCase()} — ${order.customer_name}`, {
           duration: 8000,
           style: { background: '#f97316', color: 'white', fontWeight: '700' },
         })
-        fetchData()
+        void fetchData()
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => {
-        fetchData()
+        void fetchData()
       })
       .subscribe()
-    return () => supabase.removeChannel(channel)
+    return () => { void supabase.removeChannel(channel) }
   }
 
   const STATUS_COLORS: Record<string, string> = {
@@ -88,6 +95,8 @@ export default function AdminDashboard() {
           View All Orders
         </Link>
       </div>
+
+      {error && <div role="alert" className={styles.empty}>{error} <button type="button" onClick={() => { setLoading(true); void fetchData() }}>Try again</button></div>}
 
       {/* Stats */}
       <div className={styles.statsGrid}>
@@ -152,7 +161,7 @@ export default function AdminDashboard() {
                 ))
               ) : recentOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className={styles.empty}>No orders yet</td>
+                  <td colSpan={7} className={styles.empty}>{error ? 'Orders are unavailable.' : 'No orders yet'}</td>
                 </tr>
               ) : (
                 recentOrders.map(order => (
@@ -162,7 +171,7 @@ export default function AdminDashboard() {
                       <div className={styles.customerName}>{order.customer_name}</div>
                       <div className={styles.customerPhone}>{order.customer_phone}</div>
                     </td>
-                    <td>{(order.order_items as any)?.length || 0} items</td>
+                    <td>{order.order_items?.length || 0} items</td>
                     <td className={styles.amount}>Le {order.total?.toLocaleString()}</td>
                     <td>
                       <span
@@ -192,21 +201,17 @@ export default function AdminDashboard() {
       <div className={styles.quickActions}>
         <h2>Quick Actions</h2>
         <div className={styles.actionsGrid}>
-          <Link href="/admin/products/new" className={styles.action}>
-            <Package size={24} />
-            <span>Add New Product</span>
-          </Link>
-          <Link href="/admin/categories" className={styles.action}>
-            <TrendingUp size={24} />
-            <span>Manage Categories</span>
+          <Link href="/admin/menu" className={styles.action}>
+            <BookOpen size={24} />
+            <span>Digital Menu</span>
           </Link>
           <Link href="/admin/orders" className={styles.action}>
             <Bell size={24} />
             <span>View Orders</span>
           </Link>
-          <Link href="/admin/settings" className={styles.action}>
-            <Package size={24} />
-            <span>Settings</span>
+          <Link href="/admin/account" className={styles.action}>
+            <LockKeyhole size={24} />
+            <span>My Account</span>
           </Link>
         </div>
       </div>

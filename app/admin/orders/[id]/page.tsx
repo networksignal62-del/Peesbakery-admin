@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { use, useState, useEffect, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Order, OrderStatus, OrderItem, OrderStatusHistory } from '@/lib/types'
 import { ArrowLeft, Phone, MapPin, Loader2 } from 'lucide-react'
@@ -16,36 +16,40 @@ const STATUS_COLORS: Record<string, string> = {
 const ALL_STATUSES: OrderStatus[] = ['pending', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled']
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
-  useEffect(() => {
-    params.then(p => fetchOrder(p.id))
-  }, [])
-
-  async function fetchOrder(id: string) {
-    const { data } = await supabase
+  const fetchOrder = useCallback(async () => {
+    const { data, error } = await supabase
       .from('orders')
       .select('*, order_items(*), order_status_history(*)')
       .eq('id', id)
       .single()
-    setOrder(data)
+    if (error && error.code !== 'PGRST116') setErrorMessage('This order could not be loaded. Check your connection and try again.')
+    else { setOrder(data); setErrorMessage('') }
     setLoading(false)
-  }
+  }, [id, supabase])
 
-  async function updateStatus(status: OrderStatus) {
+  useEffect(() => { void fetchOrder() }, [fetchOrder])
+
+  async function updateStatus(status: OrderStatus, note?: string) {
     if (!order) return
     setUpdating(true)
-    const { error } = await supabase.from('orders').update({ status }).eq('id', order.id)
+    const { error } = await supabase.rpc('set_order_status', {
+      p_order_id: order.id,
+      p_status: status,
+      p_note: note || null,
+    })
     if (!error) {
-      await supabase.from('order_status_history').insert({
-        order_id: order.id, status, note: `Status changed to ${status}`,
-      })
-      setOrder(prev => prev ? { ...prev, status } : null)
+      await fetchOrder()
       toast.success(`Status updated to "${status.replace('_', ' ')}"`)
+    } else {
+      toast.error('Failed to update status')
     }
     setUpdating(false)
   }
@@ -55,7 +59,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   if (!order) {
-    return <div className={styles.loading}><p>Order not found</p></div>
+    return <div className={styles.loading}><p role={errorMessage ? 'alert' : undefined}>{errorMessage || 'Order not found'}</p>{errorMessage && <button type="button" onClick={() => { setLoading(true); void fetchOrder() }}>Try again</button>}</div>
   }
 
   const items = (order.order_items || []) as OrderItem[]
@@ -130,8 +134,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <div className={styles.itemInfo}>
                     <span className={styles.itemName}>{item.product_name}</span>
                     {item.variant_name && <span className={styles.itemMeta}>{item.variant_name}</span>}
-                    {item.addons && item.addons.length > 0 && (
-                      <span className={styles.itemMeta}>+ {item.addons.map((a: any) => a.name).join(', ')}</span>
+                    {Array.isArray(item.addons) && item.addons.length > 0 && (
+                      <span className={styles.itemMeta}>+ {item.addons.map(addon => addon.name).join(', ')}</span>
                     )}
                   </div>
                   <div className={styles.itemQtyPrice}>
@@ -170,7 +174,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   key={status}
                   className={`${styles.statusBtn} ${order.status === status ? styles.statusCurrent : ''}`}
                   style={order.status === status ? { background: STATUS_COLORS[status], color: 'white', borderColor: STATUS_COLORS[status] } : { borderColor: STATUS_COLORS[status], color: STATUS_COLORS[status] }}
-                  onClick={() => order.status !== status && updateStatus(status)}
+                  onClick={() => {
+                    if (order.status === status) return
+                    if (status === 'cancelled') {
+                      const reason = window.prompt('Reason for cancellation (optional):')
+                      if (reason !== null) void updateStatus(status, reason)
+                    } else void updateStatus(status)
+                  }}
                   disabled={updating || order.status === status}
                 >
                   {updating && <Loader2 size={12} className="animate-spin" />}
@@ -184,6 +194,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <div className={styles.card}>
             <h3 className={styles.cardTitle}>Status Timeline</h3>
             <div className={styles.timeline}>
+              {history.length === 0 && <p>No status changes recorded yet.</p>}
               {history.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(h => (
                 <div key={h.id} className={styles.timelineItem}>
                   <div

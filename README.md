@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pee's Bakery staff panel
 
-## Getting Started
+This repository contains the Next.js staff panel. The panel is also integrated into the [PeesBakery customer repository](https://github.com/networksignal62-del/PeesBakery) so it can be served at `https://peesbakery.rest/admin` from one deployment. Deploy the customer repository for the shared domain and keep panel changes synchronized until the code is consolidated.
 
-First, run the development server:
+## Develop
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npx tsc --noEmit
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Copy `.env.example` to `.env.local` and use your own Supabase project values. The service-role key is server-only. Never commit it or a staff password.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Release requirements
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Rotate the previously committed Supabase service-role key and embedded password. The old values remain in public Git history until revoked.
+- Back up the database and apply `db/002_staff_roles_and_safe_orders.sql` before deploying either application. This adds staff roles, replaces permissive RLS policies, and adds an atomic guest order function.
+- Create the owner in Supabase Auth and an active `admin_profiles` row with role `super_admin`. Staff invitations are sent from **Staff access**.
+- Allow `https://peesbakery.rest/admin/welcome` in Supabase Auth redirect URLs and configure production email delivery.
+- Set `NEXT_PUBLIC_SITE_URL=https://peesbakery.rest` in the shared-domain deployment.
+- Verify owner, manager, staff, and waiter permissions against the live database. A build does not prove that RLS policies or invitation email work.
 
-## Learn More
+| Role | Access |
+| --- | --- |
+| Owner | Staff accounts, catalog, settings, orders, digital menu |
+| Admin / Manager | Catalog, settings, orders, digital menu |
+| Staff | Orders and digital menu |
+| Waiter | Digital menu and own account |
 
-To learn more about Next.js, take a look at the following resources:
+The panel includes password change under **My account**. Product image uploads and staff invitations require an active authorized session on the server.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The customer repository's `AUDIT.md` records local verification and the remaining live release checks.

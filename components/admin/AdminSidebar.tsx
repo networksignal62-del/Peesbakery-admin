@@ -5,8 +5,9 @@ import { usePathname, useRouter } from 'next/navigation'
 import { AdminProfile } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import {
-  LayoutDashboard, ShoppingBag, Package, Tags, Settings, LogOut, ChefHat, Bell
+  LayoutDashboard, ShoppingBag, Package, Tags, Settings, LogOut, ChefHat, BookOpen, Users, LockKeyhole
 } from 'lucide-react'
+import { canAccessAdminPath, isStaffRole } from '@/lib/admin-access'
 import { useState, useEffect } from 'react'
 import styles from './AdminSidebar.module.css'
 import toast from 'react-hot-toast'
@@ -21,7 +22,10 @@ const NAV_ITEMS = [
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
   { href: '/admin/products', label: 'Products', icon: Package },
   { href: '/admin/categories', label: 'Categories', icon: Tags },
+  { href: '/admin/menu', label: 'Digital menu', icon: BookOpen },
+  { href: '/admin/staff', label: 'Staff access', icon: Users },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
+  { href: '/admin/account', label: 'My account', icon: LockKeyhole },
 ]
 
 export default function AdminSidebar({ admin, onClose }: Props) {
@@ -62,13 +66,13 @@ export default function AdminSidebar({ admin, onClose }: Props) {
           <ChefHat size={22} color="white" />
         </div>
         <div>
-          <h1 className={styles.logoName}>Pee's Bakery</h1>
+          <h1 className={styles.logoName}>Pee&apos;s Bakery</h1>
           <p className={styles.logoSub}>Admin Panel</p>
         </div>
       </div>
 
       <nav className={styles.nav}>
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.filter(item => isStaffRole(admin.role) && canAccessAdminPath(admin.role, item.href)).map(({ href, label, icon: Icon }) => {
           const isActive = href === '/admin' ? pathname === '/admin' : pathname.startsWith(href)
           return (
             <Link
