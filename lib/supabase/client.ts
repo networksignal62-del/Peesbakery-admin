@@ -1,8 +1,9 @@
 import { createBrowserClient } from '@supabase/ssr'
+import { getSupabasePublicKey } from './config'
 
 export function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const anonKey = getSupabasePublicKey()
 
   if (!url || !anonKey) {
     if (typeof window === 'undefined') {

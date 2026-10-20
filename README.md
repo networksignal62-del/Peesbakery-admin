@@ -11,7 +11,7 @@ npx tsc --noEmit
 npm run build
 ```
 
-Use Node.js 22 or newer. Copy `.env.example` to `.env.local` and use your own Supabase project values. The service-role key is server-only. Never commit it or a staff password.
+Use Node.js 22 or newer. Copy `.env.example` to `.env.local` and use your own Supabase project values. `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` remain supported as legacy alternatives. The secret key is server-only. Never commit it or a staff password.
 
 ## Release requirements
 
